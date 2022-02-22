@@ -2,6 +2,8 @@
 
 Experimental 2D Rendering engine based on signed distance functions (SDFs).
 
+<image src="./image.png" width="500">
+
 ---
 
 ## Features
