@@ -1,5 +1,4 @@
 # %% 
-from ctypes.wintypes import RECT
 import math
 import matplotlib.pyplot as plt
 import numpy as np
@@ -7,6 +6,7 @@ import time
 from PIL import Image
 from cmath import inf
 from numba import jit
+import cv2
 
 # %%
 # Vector support functions
@@ -39,7 +39,7 @@ POLYGON = 3
     
     
 def generate_render_texture(width, height, depth=4, type=np.uint8):
-    return np.zeros((height, width, depth), type)
+    return np.full((height, width, depth), fill_value=255, dtype=np.uint8)
 
 
 def save_tex(texture, name="image.png"):
@@ -119,16 +119,13 @@ def box(sample_x, sample_y, bx, by, bw, bh):
 
     return length(max(qx, 0), max(qy, 0)) + min(max(qx, qy), 0)
 
-
 @jit(nopython=True)
 def rounded_box(sample_x, sample_y, bx, by, bw, bh, radius):
     return inflate(box(sample_x, sample_y, bx, by, bw - 2 * radius, bh - 2 * radius), radius)
 
-
 @jit(nopython=True)
 def circle(sample_x, sample_y, r, cx, cy):
     return math.sqrt((sample_x - cx) ** 2 + (sample_y - cy) ** 2) - r
-
 
 @jit(nopython=True)
 def polygon(sample_x, sample_y, points):
@@ -162,20 +159,19 @@ def polygon(sample_x, sample_y, points):
     return s * math.sqrt(d)
 
 @jit(nopython=True)
+def multiply(c, f):
+    r = int(float(c[0]) * f)
+    g = int(float(c[1]) * f)
+    b = int(float(c[2]) * f)
+    return [r, g, b, 255]
+
+@jit(nopython=True)
 def render(render_tex, dist_tex, tex_width, tex_height, objects):
     for w in range(tex_width):
         for h in range(tex_height):
-            dist_tex[h][w] = inf
-
-    # bounding_boxes = np.zeros((len(objects), 4), np.float64)
-
-    for w in range(tex_width):
-        for h in range(tex_height):
-            render_tex[h][w] = [255, 255, 255, 255]
-
-            # Calculate distances of all objects 
+            shadow_angle = np.pi
+ 
             for object_descriptor in objects:
-                # Determine distance to objects
                 d = inf
                 if object_descriptor[0] == LINE:
                     d = line(w, h, 10, 10, 1910, 1070, 2)
@@ -191,32 +187,24 @@ def render(render_tex, dist_tex, tex_width, tex_height, objects):
 
                 dist_tex[h][w] = min(dist_tex[h][w], d)
 
-                # Coloring based on the distance fields
-                if 0 > d:
+                elevation = 40.0
+                if d > 1.0:
+                    shadow_angle -= np.arctan(elevation/d)
+                else:
+                    shadow_angle = np.pi
+
+                if d < -0.5:
                     render_tex[h][w] = [object_descriptor[1], object_descriptor[2], object_descriptor[3], 255]
-                    # id_tex[h][w] = [object_descriptor[1], object_descriptor[2], object_descriptor[3]]
-                    continue
 
-                if 1 >= d >= 0:
+                if 1 >= d >= -0.5:
                     s = smoothstep(d, 0, 1)
-                    render_tex[h][w] = interpolate_colors(
-                        [object_descriptor[1], object_descriptor[2], object_descriptor[3], 255], render_tex[h][w], s)
+                    if d > 0:
+                         shadow_angle = 0.5 * np.pi
+                    render_tex[h][w] = interpolate_colors([object_descriptor[1], object_descriptor[2], object_descriptor[3], 255], multiply(render_tex[h][w], (abs(125*shadow_angle/np.pi)+130)/255), s)
                     continue
 
-                # TODO: Read from object descriptor
-                # outline_r = 0
-
-                # if outline_r > 0:
-                #    # interpolate between inner color and outline color
-                #    if outline_r + 1 >= dist_tex[h][w] > 1:
-                #        render_tex[h][w] = [255, 0, 0, 255]
-                #        continue
-
-                #    # interpolate between outline color and bordering color(not implemented) or background color(implemented)
-                #    if outline_r + 2 >= dist_tex[h][w] > outline_r + 1:
-                #        s = int(smoothstep(dist_tex[h][w], 0, 1) * 255)
-                #        render_tex[h][w] = [255, s, s, 255]
-                #        continue
+                if d > 1:
+                    render_tex[h][w] = multiply(render_tex[h][w], (abs(125*shadow_angle/np.pi)+130)/255)
 
 # %%
 # Driver code
@@ -226,20 +214,22 @@ def render(render_tex, dist_tex, tex_width, tex_height, objects):
 TEX_WIDTH, TEX_HEIGHT = 1920, 1080
 
 render_tex = generate_render_texture(TEX_WIDTH, TEX_HEIGHT)
-dist_tex = np.zeros((TEX_HEIGHT, TEX_WIDTH), np.float64)
+dist_tex = np.full((TEX_HEIGHT, TEX_WIDTH), fill_value=np.inf, dtype=np.float64)
+shadow_map = np.zeros((TEX_HEIGHT, TEX_WIDTH), dtype=np.float64)
 
 # Setup objects
-N_OBJECTS = 3
+N_OBJECTS = 1
 
-object_descriptors = np.zeros((N_OBJECTS, 4), np.int)
+object_descriptors = np.zeros((N_OBJECTS, 4), np.int32)
 
-# Universal Object Description: [type, r, g, b] to be extended
-object_descriptors[0] = [RECT, 79, 77, 231]
+# Universal Object Description: [type, r, g, b], to be extended...
+# object_descriptors[0] = [RECT, 79, 77, 231]
 # object_descriptors[1] = [LINE, 188, 136, 241]
-object_descriptors[1] = [CIRCLE, 237, 173, 74]
-object_descriptors[2] = [POLYGON, 255, 0, 0]
+object_descriptors[0] = [CIRCLE, 237, 173, 74]
+# object_descriptors[1] = [CIRCLE, 255, 255, 255]
+# object_descriptors[0] = [POLYGON, 255, 0, 0]
+# object_descriptors[0] = [POLYGON, 255, 255, 255]
 
-# Start rendering
 start = time.time()
 render(render_tex, dist_tex, TEX_WIDTH, TEX_HEIGHT, object_descriptors)
 print("Took:", (time.time() - start))
@@ -250,20 +240,18 @@ plt.tight_layout()
 plt.imshow(render_tex)
 plt.show()
 
-# plt.axis("off")
-# plt.tight_layout()
-# plt.imshow(dist_tex, cmap="gray")
-# plt.show()
+plt.axis("off")
+plt.tight_layout()
+plt.imshow(dist_tex, cmap="gray")
+plt.show()
 
-# plt.axis("off")
-# plt.tight_layout()
-# plt.imshow(id_tex)
-# plt.show()
+cv2.imwrite("dist_map.hdr", dist_tex)
 
-# save_tex(dist_tex, name="distances.png")
-# save_tex(id_tex, name="ids.png")
+save_tex(dist_tex, name="distances.bmp")
+# save_tex(shadow_map, name="shadows.bmp")
 save_tex(render_tex)
 show_image(render_tex)
 
 # %%
 
+# %%

@@ -11,12 +11,14 @@ Experimental 2D Rendering engine based on signed distance functions (SDFs).
 - Mediocre Frametimes
 - Anti-Aliasing
 - Inflation and deflation
+- Shadows (for some obscure reason only or one object, or to be specific the last element from the object descriptor table)
 
 ### Planned Features
 - More shapes (BezierCurves, B-Splines)
 - Translation, Rotation, Scale
 - Text Rendering
 - Faster approximate mode (calculation of SDFs only in bounding box regions, etc.)
+- Outlines
 
 ---
 
