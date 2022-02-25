@@ -160,17 +160,15 @@ def polygon(sample_x, sample_y, points):
 
 @jit(nopython=True)
 def multiply(c, f):
-    r = int(float(c[0]) * f)
-    g = int(float(c[1]) * f)
-    b = int(float(c[2]) * f)
+    r = c[0] * f
+    g = c[1] * f
+    b = c[2] * f
     return [r, g, b, 255]
 
 @jit(nopython=True)
-def render(render_tex, dist_tex, tex_width, tex_height, objects):
+def render(render_tex, tex_width, tex_height, objects):
     for w in range(tex_width):
         for h in range(tex_height):
-            shadow_angle = np.pi
- 
             for object_descriptor in objects:
                 d = inf
                 if object_descriptor[0] == LINE:
@@ -185,13 +183,8 @@ def render(render_tex, dist_tex, tex_width, tex_height, objects):
                 if d == inf:
                     continue
 
-                dist_tex[h][w] = min(dist_tex[h][w], d)
-
-                elevation = 40.0
-                if d > 1.0:
-                    shadow_angle -= np.arctan(elevation/d)
-                else:
-                    shadow_angle = np.pi
+                shadow_angle = np.pi
+                elevation = 10
 
                 if d < -0.5:
                     render_tex[h][w] = [object_descriptor[1], object_descriptor[2], object_descriptor[3], 255]
@@ -199,11 +192,11 @@ def render(render_tex, dist_tex, tex_width, tex_height, objects):
                 if 1 >= d >= -0.5:
                     s = smoothstep(d, 0, 1)
                     if d > 0:
-                         shadow_angle = 0.5 * np.pi
+                         shadow_angle -= np.arctan(elevation/d)
                     render_tex[h][w] = interpolate_colors([object_descriptor[1], object_descriptor[2], object_descriptor[3], 255], multiply(render_tex[h][w], (abs(125*shadow_angle/np.pi)+130)/255), s)
-                    continue
 
                 if d > 1:
+                    shadow_angle -= np.arctan(elevation/d)
                     render_tex[h][w] = multiply(render_tex[h][w], (abs(125*shadow_angle/np.pi)+130)/255)
 
 # %%
@@ -218,20 +211,21 @@ dist_tex = np.full((TEX_HEIGHT, TEX_WIDTH), fill_value=np.inf, dtype=np.float64)
 shadow_map = np.zeros((TEX_HEIGHT, TEX_WIDTH), dtype=np.float64)
 
 # Setup objects
-N_OBJECTS = 1
+N_OBJECTS = 3
 
 object_descriptors = np.zeros((N_OBJECTS, 4), np.int32)
 
 # Universal Object Description: [type, r, g, b], to be extended...
-# object_descriptors[0] = [RECT, 79, 77, 231]
-# object_descriptors[1] = [LINE, 188, 136, 241]
-object_descriptors[0] = [CIRCLE, 237, 173, 74]
+object_descriptors[0] = [RECT, 79, 77, 231]
+# object_descriptors[0] = [RECT, 255, 255, 255]
+# object_descriptors[0] = [LINE, 188, 136, 241]
+object_descriptors[1] = [CIRCLE, 237, 173, 74]
 # object_descriptors[1] = [CIRCLE, 255, 255, 255]
-# object_descriptors[0] = [POLYGON, 255, 0, 0]
+object_descriptors[2] = [POLYGON, 255, 0, 0]
 # object_descriptors[0] = [POLYGON, 255, 255, 255]
 
 start = time.time()
-render(render_tex, dist_tex, TEX_WIDTH, TEX_HEIGHT, object_descriptors)
+render(render_tex, TEX_WIDTH, TEX_HEIGHT, object_descriptors)
 print("Took:", (time.time() - start))
 
 # Show results
@@ -240,15 +234,6 @@ plt.tight_layout()
 plt.imshow(render_tex)
 plt.show()
 
-plt.axis("off")
-plt.tight_layout()
-plt.imshow(dist_tex, cmap="gray")
-plt.show()
-
-cv2.imwrite("dist_map.hdr", dist_tex)
-
-save_tex(dist_tex, name="distances.bmp")
-# save_tex(shadow_map, name="shadows.bmp")
 save_tex(render_tex)
 show_image(render_tex)
 
