@@ -5,8 +5,7 @@ import numpy as np
 import time
 from PIL import Image
 from cmath import inf
-from numba import jit
-import cv2
+from numba import jit, prange
 
 # %%
 # Vector support functions
@@ -165,14 +164,14 @@ def multiply(c, f):
     b = c[2] * f
     return [r, g, b, 255]
 
-@jit(nopython=True)
+@jit(nopython=True, parallel=True)
 def render(render_tex, tex_width, tex_height, objects):
-    for w in range(tex_width):
-        for h in range(tex_height):
+    for w in prange(tex_width):
+        for h in prange(tex_height):
             for object_descriptor in objects:
                 d = inf
                 if object_descriptor[0] == LINE:
-                    d = line(w, h, 10, 10, 1910, 1070, 2)
+                    d = line(w, h, 10, 10, 1910, 1070, 0.075)
                 if object_descriptor[0] == RECT:
                     d = rounded_box(w, h, 1200, 540, 500, 700, 15)
                 if object_descriptor[0] == CIRCLE:
@@ -184,45 +183,50 @@ def render(render_tex, tex_width, tex_height, objects):
                     continue
 
                 shadow_angle = np.pi
-                elevation = 10
+                elevation = object_descriptor[4]
 
                 if d < -0.5:
                     render_tex[h][w] = [object_descriptor[1], object_descriptor[2], object_descriptor[3], 255]
+                    continue
 
                 if 1 >= d >= -0.5:
                     s = smoothstep(d, 0, 1)
                     if d > 0:
                          shadow_angle -= np.arctan(elevation/d)
-                    render_tex[h][w] = interpolate_colors([object_descriptor[1], object_descriptor[2], object_descriptor[3], 255], multiply(render_tex[h][w], (abs(125*shadow_angle/np.pi)+130)/255), s)
+                    render_tex[h][w] = interpolate_colors([object_descriptor[1], object_descriptor[2], object_descriptor[3], 255], multiply(render_tex[h][w], abs(shadow_angle/np.pi)), s)
+                    continue
 
                 if d > 1:
                     shadow_angle -= np.arctan(elevation/d)
-                    render_tex[h][w] = multiply(render_tex[h][w], (abs(125*shadow_angle/np.pi)+130)/255)
+                    render_tex[h][w] = multiply(render_tex[h][w], abs(shadow_angle/np.pi))
+                    continue
+
+# %%
+# Helper functions
+# ----------------------------------------------
+
+@jit(nopython=True)
+def rgb(r, g, b):
+    return [r, g, b]
 
 # %%
 # Driver code
 # ----------------------------------------------
 
-# Setup texture maps
-TEX_WIDTH, TEX_HEIGHT = 1920, 1080
+TEX_WIDTH, TEX_HEIGHT = 1920, 1200
 
 render_tex = generate_render_texture(TEX_WIDTH, TEX_HEIGHT)
-dist_tex = np.full((TEX_HEIGHT, TEX_WIDTH), fill_value=np.inf, dtype=np.float64)
-shadow_map = np.zeros((TEX_HEIGHT, TEX_WIDTH), dtype=np.float64)
 
 # Setup objects
 N_OBJECTS = 3
 
-object_descriptors = np.zeros((N_OBJECTS, 4), np.int32)
+object_descriptors = np.zeros((N_OBJECTS, 5), np.int32)
 
 # Universal Object Description: [type, r, g, b], to be extended...
-object_descriptors[0] = [RECT, 79, 77, 231]
-# object_descriptors[0] = [RECT, 255, 255, 255]
-# object_descriptors[0] = [LINE, 188, 136, 241]
-object_descriptors[1] = [CIRCLE, 237, 173, 74]
-# object_descriptors[1] = [CIRCLE, 255, 255, 255]
-object_descriptors[2] = [POLYGON, 255, 0, 0]
-# object_descriptors[0] = [POLYGON, 255, 255, 255]
+object_descriptors[0] = [RECT, *rgb(79, 77, 231), 2]
+object_descriptors[1] = [CIRCLE, *rgb(237, 173, 74), 3]
+object_descriptors[2] = [POLYGON, *rgb(163, 15, 92), 4]
+# object_descriptors[3] = [LINE, *rgb(255, 0, 0), 0]
 
 start = time.time()
 render(render_tex, TEX_WIDTH, TEX_HEIGHT, object_descriptors)
