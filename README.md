@@ -1,5 +1,7 @@
 # 2D SDF Renderer
 
+No longer developed. New GPU powered version ![here](https://github.com/sebastianjkern/sdf_ui).
+
 Experimental 2D Rendering engine based on signed distance functions (SDFs).
 
 <image src="./image.png" width="500">
